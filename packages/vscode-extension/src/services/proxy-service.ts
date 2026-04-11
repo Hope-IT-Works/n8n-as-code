@@ -5,6 +5,18 @@ import * as vscode from 'vscode';
 import { AddressInfo } from 'net';
 import { WebSocket, WebSocketServer } from 'ws';
 
+/**
+ * Checks whether a WebSocket close code is valid for sending in a close frame.
+ * Codes 1004, 1005, and 1006 are reserved and must never be sent.
+ * Valid ranges: 1000–1003, 1007–1014, and 3000–4999.
+ */
+function canSendCloseCode(code: number): boolean {
+    return (
+        (code >= 1000 && code <= 1014 && code !== 1004 && code !== 1005 && code !== 1006) ||
+        (code >= 3000 && code <= 4999)
+    );
+}
+
 export class ProxyService {
     private server: http.Server | undefined;
     private proxy: httpProxy | undefined;
@@ -375,7 +387,11 @@ export class ProxyService {
                             clearPing();
                             this.log(`[Proxy] WS Connection Closed (Upstream): ${code}${reason.length > 0 ? ` ${reason.toString()}` : ''}`);
                             if (clientWs.readyState === WebSocket.OPEN) {
-                                clientWs.close(code, reason);
+                                if (canSendCloseCode(code)) {
+                                    clientWs.close(code, reason);
+                                } else {
+                                    clientWs.close();
+                                }
                             } else {
                                 clientWs.terminate();
                             }
@@ -384,7 +400,11 @@ export class ProxyService {
                         clientWs.on('close', (code, reason) => {
                             clearPing();
                             if (upstreamWs.readyState === WebSocket.OPEN || upstreamWs.readyState === WebSocket.CONNECTING) {
-                                upstreamWs.close(code, reason);
+                                if (canSendCloseCode(code)) {
+                                    upstreamWs.close(code, reason);
+                                } else {
+                                    upstreamWs.close();
+                                }
                             }
                         });
 
